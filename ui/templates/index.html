@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BusinessHorizonENV v2 Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════ SIDEBAR ═══════════════ -->
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <div class="logo">
+            <span class="logo-icon">BH</span>
+            <div class="logo-text">
+                <h1>BusinessHorizon</h1>
+                <span class="version">ENV v2</span>
+            </div>
+        </div>
+    </div>
+
+    <nav class="sidebar-nav">
+        <button class="nav-btn active" data-panel="dashboard" onclick="switchPanel('dashboard')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            Dashboard
+        </button>
+        <button class="nav-btn" data-panel="simulation" onclick="switchPanel('simulation')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Simulation
+        </button>
+        <button class="nav-btn" data-panel="memory" onclick="switchPanel('memory')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 6v6l4 2"/></svg>
+            Memory
+        </button>
+        <button class="nav-btn" data-panel="analytics" onclick="switchPanel('analytics')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Analytics
+        </button>
+        <button class="nav-btn" data-panel="events" onclick="switchPanel('events')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Event Log
+        </button>
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="connection-status" id="connectionStatus">
+            <span class="status-dot disconnected"></span>
+            <span>Disconnected</span>
+        </div>
+    </div>
+</aside>
+
+<!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+<main class="main-content">
+
+    <!-- ─── DASHBOARD PANEL ─── -->
+    <section class="panel active" id="panel-dashboard">
+        <header class="panel-header">
+            <h2>Dashboard</h2>
+            <p class="subtitle">Long-Horizon LLM Evaluation Framework</p>
+        </header>
+
+        <!-- Environment Cards -->
+        <div class="env-cards">
+            <div class="env-card" data-env="sales" onclick="selectEnv('sales')">
+                <div class="env-badge extreme">EXTREME</div>
+                <h3>Enterprise Sales Pipeline</h3>
+                <p>Close a $2.4M deal across 6 phases with 11 stakeholders</p>
+                <div class="env-stats">
+                    <span>340 steps</span>
+                    <span>6 phases</span>
+                    <span>3 shocks</span>
+                </div>
+            </div>
+            <div class="env-card" data-env="pm" onclick="selectEnv('pm')">
+                <div class="env-badge extreme">EXTREME</div>
+                <h3>Program Rescue</h3>
+                <p>Rescue a failing $6M program with 4 workstreams and 47 risks</p>
+                <div class="env-stats">
+                    <span>420 steps</span>
+                    <span>4 phases</span>
+                    <span>3 shocks</span>
+                </div>
+            </div>
+            <div class="env-card" data-env="hr_it" onclick="selectEnv('hr_it')">
+                <div class="env-badge legendary">LEGENDARY</div>
+                <h3>IT Transformation</h3>
+                <p>Migrate 8,000 users while handling 300 instructions and ransomware</p>
+                <div class="env-stats">
+                    <span>480 steps</span>
+                    <span>8 phases</span>
+                    <span>1 ransomware</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuration -->
+        <div class="config-section">
+            <h3>Configuration</h3>
+            <div class="config-grid">
+                <div class="config-field">
+                    <label>Environment</label>
+                    <select id="cfgEnv">
+                        <option value="sales">Enterprise Sales Pipeline</option>
+                        <option value="pm">Program Rescue</option>
+                        <option value="hr_it">IT Transformation</option>
+                    </select>
+                </div>
+                <div class="config-field">
+                    <label>Episodes</label>
+                    <input type="number" id="cfgEpisodes" value="1" min="1" max="50">
+                </div>
+                <div class="config-field">
+                    <label>Seed</label>
+                    <input type="number" id="cfgSeed" value="42" min="0">
+                </div>
+                <div class="config-field">
+                    <label>Beam Width</label>
+                    <input type="number" id="cfgBeamWidth" value="4" min="1" max="10">
+                </div>
+                <div class="config-field">
+                    <label>Beam Depth</label>
+                    <input type="number" id="cfgBeamDepth" value="3" min="1" max="5">
+                </div>
+                <div class="config-field">
+                    <label>Reset State</label>
+                    <select id="cfgReset">
+                        <option value="true">Yes (fresh start)</option>
+                        <option value="false">No (continue learning)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="config-actions">
+                <button class="btn btn-primary btn-lg" id="btnStart" onclick="startRun()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Start Simulation
+                </button>
+                <button class="btn btn-danger btn-lg" id="btnStop" onclick="stopRun()" disabled>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+                    Stop
+                </button>
+            </div>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="quick-stats" id="quickStats">
+            <div class="stat-card">
+                <span class="stat-label">Episodes Run</span>
+                <span class="stat-value" id="statEpisodes">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Skills Learned</span>
+                <span class="stat-value" id="statSkills">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Replay Buffer</span>
+                <span class="stat-value" id="statReplay">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Best Reward</span>
+                <span class="stat-value" id="statBestReward">--</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── SIMULATION PANEL ─── -->
+    <section class="panel" id="panel-simulation">
+        <header class="panel-header">
+            <h2>Live Simulation</h2>
+            <div class="sim-status" id="simStatus">
+                <span class="status-indicator idle"></span>
+                <span id="simStatusText">Idle</span>
+            </div>
+        </header>
+
+        <!-- Progress Bar -->
+        <div class="progress-container">
+            <div class="progress-info">
+                <span id="progressLabel">Step 0 / --</span>
+                <span id="progressPhase">Phase 1</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Live Metrics Row -->
+        <div class="live-metrics">
+            <div class="metric">
+                <span class="metric-label">Step</span>
+                <span class="metric-value" id="liveStep">0</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Phase</span>
+                <span class="metric-value" id="livePhase">1</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Action</span>
+                <span class="metric-value action-tag" id="liveAction">--</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Step Reward</span>
+                <span class="metric-value" id="liveReward">0.00</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Total Reward</span>
+                <span class="metric-value" id="liveTotalReward">0.00</span>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-row">
+            <div class="chart-container">
+                <h4>Reward Over Time</h4>
+                <canvas id="rewardChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h4>Cumulative Reward</h4>
+                <canvas id="cumulativeChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Goal Progress -->
+        <div class="goal-section" id="goalSection">
+            <h4>Goal Progress</h4>
+            <div class="goal-bars" id="goalBars"></div>
+        </div>
+
+        <!-- State Digest -->
+        <div class="state-section">
+            <h4>Environment State</h4>
+            <div class="state-grid" id="stateGrid"></div>
+        </div>
+
+        <!-- Live Event Feed -->
+        <div class="event-feed">
+            <h4>Live Events</h4>
+            <div class="feed-list" id="liveFeed"></div>
+        </div>
+    </section>
+
+    <!-- ─── MEMORY PANEL ─── -->
+    <section class="panel" id="panel-memory">
+        <header class="panel-header">
+            <h2>Memory System</h2>
+            <p class="subtitle">Three-store architecture with 4-level compression</p>
+        </header>
+
+        <div class="memory-overview">
+            <div class="memory-store">
+                <div class="store-header working">
+                    <h4>Working Memory</h4>
+                    <span class="store-count" id="memWorking">0</span>
+                </div>
+                <p>Recent events (sliding window)</p>
+                <div class="store-bar">
+                    <div class="store-fill" id="memWorkingBar" style="width: 0%"></div>
+                </div>
+            </div>
+            <div class="memory-store">
+                <div class="store-header episodic">
+                    <h4>Episodic Memory</h4>
+                    <span class="store-count" id="memEpisodic">0</span>
+                </div>
+                <p>TF-IDF indexed events</p>
+                <div class="store-bar">
+                    <div class="store-fill" id="memEpisodicBar" style="width: 0%"></div>
+                </div>
+            </div>
+            <div class="memory-store">
+                <div class="store-header semantic">
+                    <h4>Semantic Memory</h4>
+                    <span class="store-count" id="memSemantic">0</span>
+                </div>
+                <p>Learned beliefs and concepts</p>
+                <div class="store-bar">
+                    <div class="store-fill" id="memSemanticBar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Compression Pipeline -->
+        <div class="compression-section">
+            <h4>Compression Pipeline</h4>
+            <div class="compression-flow">
+                <div class="comp-node">
+                    <span class="comp-label">Raw Events</span>
+                    <span class="comp-ratio">1:1</span>
+                </div>
+                <div class="comp-arrow">&#10142;</div>
+                <div class="comp-node">
+                    <span class="comp-label">Daily Summaries</span>
+                    <span class="comp-count" id="compDaily">0</span>
+                    <span class="comp-ratio">~10:1</span>
+                </div>
+                <div class="comp-arrow">&#10142;</div>
+                <div class="comp-node">
+                    <span class="comp-label">Milestone Summaries</span>
+                    <span class="comp-count" id="compMilestone">0</span>
+                    <span class="comp-ratio">~30:1</span>
+                </div>
+                <div class="comp-arrow">&#10142;</div>
+                <div class="comp-node">
+                    <span class="comp-label">Strategic Insights</span>
+                    <span class="comp-count" id="compStrategic">0</span>
+                    <span class="comp-ratio">~100:1</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Chart -->
+        <div class="chart-container" style="max-width: 700px; margin: 2rem auto;">
+            <h4>Memory Growth</h4>
+            <canvas id="memoryChart"></canvas>
+        </div>
+    </section>
+
+    <!-- ─── ANALYTICS PANEL ─── -->
+    <section class="panel" id="panel-analytics">
+        <header class="panel-header">
+            <h2>Analytics</h2>
+            <p class="subtitle">Cross-episode learning curves and performance metrics</p>
+        </header>
+
+        <div class="charts-row">
+            <div class="chart-container">
+                <h4>Episode Rewards</h4>
+                <canvas id="episodeRewardChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h4>Episode Duration</h4>
+                <canvas id="episodeDurationChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Episode Results Table -->
+        <div class="results-section">
+            <h4>Episode Results</h4>
+            <div class="table-wrapper">
+                <table class="results-table" id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>Ep</th>
+                            <th>Env</th>
+                            <th>Steps</th>
+                            <th>Reward</th>
+                            <th>Phase</th>
+                            <th>Terminal</th>
+                            <th>Time</th>
+                            <th>Skills</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── EVENTS PANEL ─── -->
+    <section class="panel" id="panel-events">
+        <header class="panel-header">
+            <h2>Event Log</h2>
+            <div class="event-controls">
+                <input type="text" id="eventFilter" placeholder="Filter events..." oninput="filterEvents()">
+                <button class="btn btn-sm" onclick="clearEvents()">Clear</button>
+            </div>
+        </header>
+        <div class="event-log" id="eventLog"></div>
+    </section>
+
+</main>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
