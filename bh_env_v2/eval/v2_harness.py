@@ -552,8 +552,55 @@ def main() -> None:
         metavar="SCALE",
         help="Run scale validation at SCALE factor (e.g., 10)",
     )
+    parser.add_argument(
+        "--benchmark",
+        action="store_true",
+        help="Run baseline benchmark (Random, Greedy, RuleBased, PlannerOnly, V2Agent)",
+    )
+    parser.add_argument(
+        "--llm-benchmark",
+        action="store_true",
+        help="Run LLM benchmark across available models",
+    )
+    parser.add_argument(
+        "--models",
+        type=str,
+        default=None,
+        help="Comma-separated model names for --llm-benchmark (e.g., claude-sonnet,gpt-4o)",
+    )
+    parser.add_argument(
+        "--open-model-url",
+        type=str,
+        default=None,
+        help="Base URL for open model API (default: http://localhost:11434/v1)",
+    )
 
     args = parser.parse_args()
+
+    # ── Baseline benchmark mode ──
+    if args.benchmark:
+        from .baselines import run_benchmark
+        run_benchmark(
+            env_ids=[args.env_id],
+            episodes=args.episodes if args.episodes > 1 else 5,
+            seed=args.seed,
+        )
+        return
+
+    # ── LLM benchmark mode ──
+    if args.llm_benchmark:
+        from .llm_benchmark import run_llm_benchmark
+        model_names = args.models.split(",") if args.models else None
+        run_llm_benchmark(
+            env_id=args.env_id,
+            model_names=model_names,
+            episodes=args.episodes if args.episodes > 1 else 3,
+            seed=args.seed,
+            llm_every_n=args.llm_every_n,
+            open_model_url=args.open_model_url,
+            verbose=args.verbose,
+        )
+        return
 
     # ── Multi-agent mode ──
     if args.multi_agent:

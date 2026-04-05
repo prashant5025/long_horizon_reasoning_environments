@@ -10,6 +10,7 @@ Integrates all six v2 improvements on every decision step:
 """
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -35,6 +36,9 @@ class AgentContext:
     env_id: str
     beam_width: int = 4
     beam_depth: int = 3
+    epsilon: float = 0.15           # Exploration rate (epsilon-greedy)
+    epsilon_decay: float = 0.995    # Per-step decay
+    epsilon_min: float = 0.02       # Floor
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -57,6 +61,8 @@ class V2Agent:
         self._skill_id: Optional[str] = None
         self._skill_step: int = 0
         self._skill_reward_acc: float = 0.0
+        self._epsilon: float = ctx.epsilon
+        self._rng = random.Random()
 
     # ── main entry point ──────────────────────────────────────────────────
 
@@ -111,6 +117,18 @@ class V2Agent:
         value_fn = self._ctx.vf_registry.make_hybrid_scorer(env_id)
         best_action, plan_info = self._ctx.planner.plan(
             step, actions, value_fn, state_digest,
+        )
+
+        # ─── Epsilon-greedy exploration ───────────────────────────────
+        # Without exploration, the untrained VF deterministically locks
+        # onto one action and never discovers rewarding alternatives.
+        if self._rng.random() < self._epsilon:
+            best_action = self._rng.choice(actions)
+
+        # Decay epsilon
+        self._epsilon = max(
+            self._ctx.epsilon_min,
+            self._epsilon * self._ctx.epsilon_decay,
         )
 
         return best_action

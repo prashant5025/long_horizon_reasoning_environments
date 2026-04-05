@@ -196,7 +196,7 @@ class TreeOfThought:
         "CONTACT_STAKEHOLDER": 5.0,
         "ALLOCATE_BUDGET": 4.0,
         "BOOST_MORALE": 4.0,
-        "RESPOND_SHOCK": 8.0,
+        "RESPOND_SHOCK": 1.0,   # ← Low default; hybrid scorer overrides contextually
         "REVIEW_STATUS": 3.0,
         "NOOP": -1.0,
     }
@@ -321,7 +321,35 @@ class TreeOfThought:
 
     @classmethod
     def _default_value_fn(cls, state_digest: Dict[str, Any], action_type: str) -> float:
-        return cls._DEFAULT_SCORES.get(action_type, 0.0)
+        base = cls._DEFAULT_SCORES.get(action_type, 0.0)
+
+        # Context-aware overrides (mirrors value_fn._context_aware_heuristic)
+        if action_type == "RESPOND_SHOCK":
+            ransomware = state_digest.get("ransomware_active", False)
+            budget_frozen = state_digest.get("budget_frozen", False)
+            if ransomware or budget_frozen:
+                return 9.0       # Highest urgency when shock active
+            # PM: shocks fire at steps 100, 220, 340 — dominant action
+            if "ws_progress_avg" in state_digest:
+                step = state_digest.get("step", 0)
+                if step >= 100:
+                    return 8.0   # Recurring +8..+12 per step
+            return -1.0          # No shock indicators — worse than NOOP
+
+        if action_type == "MIGRATE_COHORT":
+            if state_digest.get("ransomware_active", False):
+                return -1.0      # Migration frozen during ransomware
+            migrated = state_digest.get("migrated_pct", 0)
+            if migrated < 100:
+                return 7.0
+            return 0.0
+
+        if action_type == "ADVANCE_DEAL":
+            if state_digest.get("budget_frozen", False):
+                return -1.0      # Blocked during budget freeze
+            return base
+
+        return base
 
 
 # ────────────────────────────────────────────────────────────────────────────

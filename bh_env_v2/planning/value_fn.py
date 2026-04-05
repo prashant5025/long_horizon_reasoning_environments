@@ -17,7 +17,7 @@ from ..engine.types import ActionType, EnvID
 _ACTION_ORDER: List[str] = [a.name for a in ActionType]
 _NUM_ACTIONS: int = len(_ACTION_ORDER)  # 12
 
-# ── Heuristic prior scores (same defaults used in the planner) ───────────────
+# ── Heuristic prior scores (static fallback — prefer _context_aware_heuristic) ─
 _HEURISTIC_SCORES: Dict[str, float] = {
     "ADVANCE_DEAL": 8,
     "RESOLVE_RISK": 7,
@@ -32,6 +32,99 @@ _HEURISTIC_SCORES: Dict[str, float] = {
     "REVIEW_STATUS": 3,
     "NOOP": 1,
 }
+
+
+def _context_aware_heuristic(action_name: str, state_digest: dict) -> float:
+    """
+    Return a heuristic score (1-10) that considers the actual game state.
+
+    The static ``_HEURISTIC_SCORES`` dict is state-blind — it gives
+    RESPOND_SHOCK a permanently high score (7) even when no shock is
+    active, causing the agent to spam that action uselessly.  This
+    function fixes that by conditioning scores on state_digest keys.
+    """
+    base = _HEURISTIC_SCORES.get(action_name, 1)
+
+    # ── RESPOND_SHOCK: only valuable when a shock is actually happening ──
+    if action_name == "RESPOND_SHOCK":
+        # HR/IT: ransomware crisis
+        ransomware = state_digest.get("ransomware_active", False)
+        if ransomware:
+            return 9          # Highest urgency — actively burning
+
+        # Sales: budget freeze crisis
+        budget_frozen = state_digest.get("budget_frozen", False)
+        if budget_frozen:
+            return 9          # Unblock the deal
+
+        # PM environment (detected via ws_progress_avg key):
+        # Scripted shocks fire at steps 100, 220, 340.  Each
+        # RESPOND_SHOCK call yields +8/+10/+12 *recurring* reward
+        # (architect → morale +10 & backend +5%; vendor → unblock;
+        # scope_creep → resolve 5 risks).  This makes RESPOND_SHOCK
+        # the highest-reward-per-step action in PM after step 100.
+        if "ws_progress_avg" in state_digest:
+            step = state_digest.get("step", 0)
+            if step >= 100:
+                return 8      # Dominant action — recurring +8..+12/step
+            return 1          # No shocks yet
+
+        # No shock indicators in any env → waste of a step
+        return 1
+
+    # ── MIGRATE_COHORT: blocked during ransomware, high priority otherwise ──
+    if action_name == "MIGRATE_COHORT":
+        if state_digest.get("ransomware_active", False):
+            return 1          # Migration frozen during ransomware
+        migrated = state_digest.get("migrated_pct", 0)
+        if migrated < 100:
+            return 7          # Primary objective — keep migrating
+        return 1              # Already done
+
+    # ── FULFILL_INSTRUCTION: steady priority when instructions remain ──
+    if action_name == "FULFILL_INSTRUCTION":
+        fulfilled = state_digest.get("fulfilled_instructions", 0)
+        total = state_digest.get("total_instructions", 300)
+        if fulfilled < total:
+            return 6
+        return 1              # All fulfilled
+
+    # ── ADVANCE_DEAL: blocked during budget freeze ──
+    if action_name == "ADVANCE_DEAL":
+        if state_digest.get("budget_frozen", False):
+            return 1          # Can't advance under freeze
+        return base           # 8
+
+    # ── RUN_POC: diminishing returns above 90 ──
+    if action_name == "RUN_POC":
+        poc = state_digest.get("poc_score", 0)
+        if poc >= 90:
+            return 2
+        return base           # 5
+
+    # ── RESOLVE_RISK: higher priority when risks are pending ──
+    if action_name == "RESOLVE_RISK":
+        risks = state_digest.get("risks_resolved", 0)
+        if risks < 47:
+            return 7
+        return 2
+
+    # ── BOOST_MORALE: urgent when SLA/morale is low ──
+    if action_name == "BOOST_MORALE":
+        sla = state_digest.get("sla_score", 100)
+        morale = state_digest.get("team_morale", 100)
+        if sla < 95 or morale < 40:
+            return 6          # SLA breach danger or low morale
+        return base           # 4
+
+    # ── REVIEW_STATUS: useful when ticket queue is large ──
+    if action_name == "REVIEW_STATUS":
+        tickets = state_digest.get("ticket_queue", 0)
+        if tickets > 30:
+            return 5          # Clear the backlog
+        return base           # 3
+
+    return base
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -96,8 +189,8 @@ class FeatureExtractor:
         f[26] = math.log(abs(total_reward) + 1.0) / 10.0
         f[27] = phase / 6.0  # phase fraction (same as dim 0)
 
-        # Dim 28: heuristic prior
-        f[28] = _HEURISTIC_SCORES.get(action_name, 1) / 10.0
+        # Dim 28: context-aware heuristic prior
+        f[28] = _context_aware_heuristic(action_name, state_digest) / 10.0
 
         # Dims 29-31: pressure / alignment features
         f[29] = 1.0 - step / max_steps  # time pressure
@@ -120,8 +213,10 @@ class FeatureExtractor:
         f[30] = resource_pressure
 
         # Goal alignment: 1 if action matches a plausible high-value action
+        # Uses context-aware scoring so RESPOND_SHOCK doesn't get
+        # alignment=1 when no shock is active
         goal_alignment = 0.0
-        if _HEURISTIC_SCORES.get(action_name, 0) >= 6:
+        if _context_aware_heuristic(action_name, state_digest) >= 6:
             goal_alignment = 1.0
         f[31] = goal_alignment
 
@@ -434,16 +529,17 @@ class ValueFunctionRegistry:
     def make_hybrid_scorer(
         self,
         env_id: str,
-        heuristic_weight: float = 0.5,
+        heuristic_weight: float = 0.9,
     ) -> Callable[[dict, str], float]:
         """
         Return a callable(state_digest, action_type) -> float that blends
         learned value with the heuristic prior.
 
-        The heuristic weight *w* decays exponentially as the trainer
-        accumulates offline experience:
-            w_eff = w * exp(-offline_steps / 500)
-        so the learned signal dominates over time.
+        The heuristic weight starts HIGH (0.9) so the untrained neural
+        network's random outputs don't dominate.  As the trainer
+        accumulates offline experience, the heuristic fades:
+            w_eff = w * exp(-offline_steps / 200)
+        so the learned signal takes over after ~400-600 offline steps.
         """
         trainer = self.get_or_create(env_id)
         extractor = self._feature_extractor
@@ -453,10 +549,13 @@ class ValueFunctionRegistry:
             learned = trainer.online_net.forward(features)
 
             action_name = action_type if isinstance(action_type, str) else action_type.name
-            heuristic = _HEURISTIC_SCORES.get(action_name, 1) / 10.0
+            # Use context-aware heuristic so RESPOND_SHOCK only scores
+            # high when a shock is actually active
+            heuristic = _context_aware_heuristic(action_name, state_digest) / 10.0
 
             # Exponential decay of heuristic contribution
-            decay = math.exp(-trainer.offline_steps / 500.0)
+            # Starts at w=0.9 (heuristic dominates) -> decays toward 0
+            decay = math.exp(-trainer.offline_steps / 200.0)
             w = heuristic_weight * decay
 
             return (1.0 - w) * learned + w * heuristic
